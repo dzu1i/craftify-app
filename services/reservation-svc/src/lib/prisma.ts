@@ -1,2 +1,3 @@
-import { prisma } from "@craftify/prisma";
-export { prisma };
+import { PrismaClient } from "@prisma/client";
+
+export const prisma = new PrismaClient();

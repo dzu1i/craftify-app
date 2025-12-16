@@ -2,83 +2,146 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 
-export const reservationRouter = Router();
-
-// Auth required for all
-reservationRouter.use(requireAuth);
+const router = Router();
 
 /**
  * POST /reservations
+ * Create reservation for logged user
  */
-reservationRouter.post("/", async (req, res) => {
-  const { eventId } = req.body;
-  const user = (req as any).user;
+router.post("/", requireAuth, async (req, res) => {
+  const userId = req.user!.sub;
+  const { timeSlotId } = req.body;
 
-  if (!eventId) return res.status(400).json({ error: "eventId required" });
+  if (!timeSlotId) {
+    return res.status(400).json({ error: "timeSlotId is required" });
+  }
 
-  const event = await prisma.event.findUnique({ where: { id: eventId } });
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (event.status !== "published")
-    return res.status(400).json({ error: "Unavailable event" });
-
-  const count = await prisma.booking.count({
-    where: { eventId, status: "confirmed" },
+  // 1️⃣ check capacity
+  const slot = await prisma.timeSlot.findUnique({
+    where: { id: timeSlotId },
+    include: {
+      reservations: {
+        where: { status: "booked" },
+      },
+    },
   });
 
-  if (count >= event.capacity)
-    return res.status(409).json({ error: "Event full" });
+  if (!slot) {
+    return res.status(404).json({ error: "Event not found" });
+  }
 
-  const booking = await prisma.booking.create({
-    data: { eventId, customerId: user.id },
+  if (slot.reservations.length >= slot.capacity) {
+    return res.status(409).json({ error: "Event is full" });
+  }
+
+  // 2️⃣ create reservation
+  const reservation = await prisma.reservation.create({
+    data: {
+      userId,
+      timeSlotId,
+    },
   });
 
-  (req as any).auditEntityType = "Booking";
-  (req as any).auditEntityId = booking.id;
-  (req as any).auditPayload = req.body;
-
-  res.status(201).json(booking);
+  res.status(201).json(reservation);
 });
 
 /**
- * GET /reservations/me
+ * GET /me/reservations
  */
-reservationRouter.get("/me", async (req, res) => {
-  const user = (req as any).user;
+router.get("/me", requireAuth, async (req, res) => {
+  const userId = req.user!.sub;
 
-  const bookings = await prisma.booking.findMany({
-    where: { customerId: user.id },
+  const reservations = await prisma.reservation.findMany({
+    where: { userId },
     include: {
-      event: {
-        include: { location: true, category: true },
-      },
+      timeSlot: true,
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: {
+      createdAt: "desc",
+    },
   });
 
-  res.json(bookings);
+  res.json(reservations);
 });
 
 /**
  * PATCH /reservations/:id/cancel
  */
-reservationRouter.patch("/:id/cancel", async (req, res) => {
-  const user = (req as any).user;
-  const id = req.params.id;
+router.patch("/:id/cancel", requireAuth, async (req, res) => {
+  const userId = req.user!.sub;
+  const { id } = req.params;
 
-  const booking = await prisma.booking.findUnique({ where: { id } });
-  if (!booking || booking.customerId !== user.id)
-    return res.status(404).json({ error: "Not found" });
-
-  if (booking.status === "cancelled") return res.json(booking);
-
-  const updated = await prisma.booking.update({
+  const reservation = await prisma.reservation.findUnique({
     where: { id },
-    data: { status: "cancelled", cancelledAt: new Date() },
   });
 
-  (req as any).auditEntityType = "Booking";
-  (req as any).auditEntityId = updated.id;
-  (req as any).auditPayload = { cancelled: true };
+  if (!reservation || reservation.userId !== userId) {
+    return res.status(404).json({ error: "Reservation not found" });
+  }
+
+  const updated = await prisma.reservation.update({
+    where: { id },
+    data: { status: "canceled" },
+  });
 
   res.json(updated);
 });
+
+router.patch("/:id/reschedule", requireAuth, async (req, res) => {
+  const userId = req.user!.sub;
+  const { id } = req.params;
+  const { toTimeSlotId } = req.body;
+
+  if (!toTimeSlotId) {
+    return res.status(400).json({ error: "toTimeSlotId is required" });
+  }
+
+  try {
+    const updated = await prisma.$transaction(async (tx) => {
+      const reservation = await tx.reservation.findUnique({
+        where: { id },
+      });
+
+      if (!reservation || reservation.userId !== userId) {
+        throw { status: 404, message: "Reservation not found" };
+      }
+
+      const slot = await tx.timeSlot.findUnique({
+        where: { id: toTimeSlotId },
+        include: {
+          reservations: { where: { status: "booked" } },
+        },
+      });
+
+      if (!slot) {
+        throw { status: 404, message: "Target event not found" };
+      }
+
+      if (slot.reservations.length >= slot.capacity) {
+        throw { status: 409, message: "Target event is full" };
+      }
+
+      return tx.reservation.update({
+        where: { id },
+        data: {
+          timeSlotId: toTimeSlotId,
+          status: "booked",
+        },
+      });
+    });
+
+    res.json({
+      reservationId: updated.id,
+      timeSlotId: updated.timeSlotId,
+      status: updated.status,
+    });
+  } catch (err: any) {
+    res
+      .status(err.status ?? 500)
+      .json({ error: err.message ?? "Reschedule failed" });
+  }
+});
+
+
+
+export default router;

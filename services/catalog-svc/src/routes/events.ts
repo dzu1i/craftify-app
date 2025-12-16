@@ -1,26 +1,32 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
-import { requireAdmin } from "../middleware/auth";
+import requireAdmin from "../middleware/admin";
 
-export const eventRouter = Router();
+const router = Router();
 
 /**
  * GET /events
- * Public list of published upcoming events
+ * Public – list published upcoming events
  */
-eventRouter.get("/", async (_req, res) => {
+router.get("/", async (_req, res) => {
   const now = new Date();
 
-  const events = await prisma.event.findMany({
+  const events = await prisma.timeSlot.findMany({
     where: {
       status: "published",
       startAt: { gte: now },
     },
     include: {
-      category: true,
-      location: true,
+      classType: {
+        include: {
+          category: true,
+        },
+      },
+      venue: true,
     },
-    orderBy: { startAt: "asc" },
+    orderBy: {
+      startAt: "asc",
+    },
   });
 
   res.json(events);
@@ -28,40 +34,46 @@ eventRouter.get("/", async (_req, res) => {
 
 /**
  * POST /events
- * Publish availability (admin only)
+ * Admin – publish new event (time slot)
  */
-eventRouter.post("/", requireAdmin, async (req, res) => {
+router.post("/", requireAdmin, async (req, res) => {
   const {
     title,
-    categoryId,
-    locationId,
+    classTypeId,
+    venueId,
     startAt,
     endAt,
     capacity,
-    priceCents,
-    description,
+    price,
   } = req.body;
 
-  if (!title || !categoryId || !locationId || !startAt || !endAt) {
+  // Validation
+  if (
+    !title ||
+    !classTypeId ||
+    !venueId ||
+    !startAt ||
+    !endAt ||
+    capacity == null ||
+    price == null
+  ) {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
-  const event = await prisma.event.create({
+  const event = await prisma.timeSlot.create({
     data: {
       title,
-      description,
-      categoryId,
-      locationId,
+      classTypeId,
+      venueId,
       startAt: new Date(startAt),
       endAt: new Date(endAt),
       capacity: Number(capacity),
-      priceCents: Number(priceCents),
+      price: Number(price),
+      status: "published",
     },
   });
 
-  (req as any).auditEntityType = "Event";
-  (req as any).auditEntityId = event.id;
-  (req as any).auditPayload = req.body;
-
   res.status(201).json(event);
 });
+
+export default router;

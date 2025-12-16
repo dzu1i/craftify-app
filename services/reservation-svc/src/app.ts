@@ -1,27 +1,28 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { auditLog } from "./middleware/auditLog";
-import { reservationRouter } from "./routes/reservations";
+
+import { requireAuth } from "./middleware/auth";
+
+import routes from "./routes";
 
 dotenv.config();
 
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
 app.use((req, _res, next) => {
-  console.log(`[reservation-svc] ${req.method} ${req.path}`);
+  console.log(`[catalog-svc] ${req.method} ${req.path}`);
   next();
 });
 
-// audit
-app.use(auditLog("reservation-svc"));
-
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", service: "reservation-svc" });
+  res.json({ status: "ok", service: "catalog-svc" });
 });
 
-app.use("/reservations", reservationRouter);
+// Other routes
+app.use("/", routes);
 
-export { app };
+export default app;

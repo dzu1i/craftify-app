@@ -1,7 +1,7 @@
-import { app } from "./app";
+import app from "./app";
 
-const PORT = process.env.PORT || 4002;
+const PORT = process.env.PORT || 3002;
 
-app.listen(PORT, () =>
-  console.log(`reservation-svc running at http://localhost:${PORT}`)
-);
+app.listen(PORT, () => {
+  console.log(`catalog-svc running on http://localhost:${PORT}`);
+});

@@ -1,112 +1,100 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
-}
-
 model Category {
-  id          String   @id @default(uuid())
-  name        String   @unique
-  description String?
-
-  events      Event[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String    @id @default(cuid())
+  name      String    @unique
+  classTypes ClassType[]
+  createdAt DateTime  @default(now())
 }
 
-model Location {
-  id        String   @id @default(uuid())
+model ClassType {
+  id          String    @id @default(cuid())
+  name        String
+  categoryId  String
+  category    Category  @relation(fields: [categoryId], references: [id])
+  timeSlots   TimeSlot[]
+  createdAt   DateTime  @default(now())
+
+  @@index([categoryId])
+}
+
+model Venue {
+  id        String   @id @default(cuid())
   name      String
   address   String?
   city      String?
-  capacity  Int?
-
-  events    Event[]
+  timeSlots TimeSlot[]
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 }
 
-enum EventStatus {
+enum TimeSlotStatus {
   draft
   published
   hidden
-  cancelled
+  closed
 }
 
-model Event {
-  id          String      @id @default(uuid())
-  title       String
-  description String?
-  categoryId  String
-  locationId  String
+model TimeSlot {
+  id          String         @id @default(cuid())
+  title       String         
+  classTypeId String
+  venueId     String
   startAt     DateTime
   endAt       DateTime
   capacity    Int
-  priceCents  Int
-  status      EventStatus @default(published)
+  price       Int
+  status      TimeSlotStatus @default(draft)
+  createdAt   DateTime       @default(now())
 
-  category    Category    @relation(fields: [categoryId], references: [id])
-  location    Location    @relation(fields: [locationId], references: [id])
-  bookings    Booking[]
+  classType   ClassType      @relation(fields: [classTypeId], references: [id])
+  venue       Venue          @relation(fields: [venueId], references: [id])
+  reservations Reservation[]
 
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  @@index([startAt])
+  @@index([status])
+}
 
-  @@index([categoryId])
-  @@index([locationId])
-  @@index([status, startAt])
+enum ReservationStatus {
+  booked
+  canceled
 }
 
 model CustomerProfile {
-  id        String   @id            // Supabase user ID
-  email     String   @unique
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  email     String?
   fullName  String?
-  isAdmin   Boolean  @default(false)
-
-  bookings  Booking[]
-
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 }
 
-enum BookingStatus {
-  confirmed
-  cancelled
-}
+model Reservation {
+  id          String            @id @default(cuid())
+  userId      String
+  timeSlotId  String
+  status      ReservationStatus @default(booked)
+  createdAt   DateTime          @default(now())
 
-model Booking {
-  id              String        @id @default(uuid())
-  eventId         String
-  customerId      String
-  status          BookingStatus @default(confirmed)
-  originalEventId String?
-  cancelledAt     DateTime?
+  timeSlot    TimeSlot          @relation(fields: [timeSlotId], references: [id])
 
-  event           Event          @relation(fields: [eventId], references: [id])
-  customer        CustomerProfile @relation(fields: [customerId], references: [id])
-
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-
-  @@index([eventId])
-  @@index([customerId])
-  @@unique([eventId, customerId], name: "one_booking_per_customer_per_event")
+  @@index([userId])
+  @@index([timeSlotId])
 }
 
 model AuditLog {
-  id         String   @id @default(uuid())
-  service    String
-  userId     String?
-  action     String
-  entityType String?
-  entityId   String?
-  payload    Json?
-  ip         String?
-  userAgent  String?
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  action    String
+  actorId   String?
+  entity    String?
+  entityId  String?
+  meta      Json?
+  createdAt DateTime @default(now())
 
   @@map("audit_log")
 }
