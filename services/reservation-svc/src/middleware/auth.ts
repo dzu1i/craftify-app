@@ -1,9 +1,10 @@
-import jwt from "jsonwebtoken";
-import { Request, Response, NextFunction } from "express";
+import type { Request, Response, NextFunction } from "express";
+import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 
 export type AuthUser = {
-  sub: string;
+  id: string; // Supabase user id (JWT "sub")
   email?: string;
+  payload: JWTPayload;
 };
 
 declare global {
@@ -14,27 +15,49 @@ declare global {
   }
 }
 
-export function requireAuth(
-  req: Request,
-  res: Response,
-  next: NextFunction
-) {
-  const header = req.headers.authorization;
-  if (!header?.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Missing bearer token" });
-  }
+function getBearerToken(req: Request): string | null {
+  const header = req.headers.authorization ?? "";
+  const [type, token] = header.split(" ");
+  if (type !== "Bearer" || !token) return null;
+  return token;
+}
 
-  const token = header.slice("Bearer ".length);
-  const secret = process.env.SUPABASE_JWT_SECRET;
-  if (!secret) {
-    return res.status(500).json({ error: "SUPABASE_JWT_SECRET not set" });
-  }
+const supabaseUrl = process.env.SUPABASE_URL;
+if (!supabaseUrl) {
+  throw new Error("Missing SUPABASE_URL env var");
+}
 
+// Supabase JWKS endpoint
+const jwks = createRemoteJWKSet(new URL(`${supabaseUrl}/auth/v1/keys`));
+
+const audience = process.env.SUPABASE_JWT_AUD ?? "authenticated";
+// issuer check je volitelné – pokud chceš zpřísnit, nech to takhle:
+const issuer = `${supabaseUrl}/auth/v1`;
+
+export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   try {
-    const payload = jwt.verify(token, secret) as any;
-    req.user = { sub: payload.sub, email: payload.email };
-    next();
+    const token = getBearerToken(req);
+    if (!token) {
+      return res.status(401).json({ error: "Missing Authorization Bearer token" });
+    }
+
+    const { payload } = await jwtVerify(token, jwks, {
+      audience,
+      issuer,
+    });
+
+    if (!payload.sub) {
+      return res.status(401).json({ error: "Invalid token (missing sub)" });
+    }
+
+    req.user = {
+      id: payload.sub,
+      email: typeof payload.email === "string" ? payload.email : undefined,
+      payload,
+    };
+
+    return next();
   } catch {
-    return res.status(401).json({ error: "Invalid token" });
+    return res.status(401).json({ error: "Invalid or expired token" });
   }
 }

@@ -19,7 +19,7 @@ app.use((req, _res, next) => {
 });
 
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", service: "catalog-svc" });
+  res.json({ status: "ok", service: "reservation-svc" });
 });
 
 // Other routes

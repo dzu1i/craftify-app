@@ -6,7 +6,6 @@ import { auditLog } from "./middleware/auditLog";
 import { requireAuth } from "./middleware/auth";
 
 import routes from "./routes";
-import eventRouter from "./routes/events";
 
 dotenv.config();
 
@@ -29,9 +28,6 @@ app.use(auditLog("catalog-svc"));
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "catalog-svc" });
 });
-
-// Events router
-app.use("/events", eventRouter);
 
 // Other routes
 app.use("/", routes);

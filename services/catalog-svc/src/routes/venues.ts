@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
-import requireAdmin from "../middleware/admin";
+import { requireAuth } from "../middleware/auth";
+import { requireAdmin } from "../middleware/roles";
 
 const router = Router();
 
@@ -20,7 +21,7 @@ router.get("/", async (_req, res) => {
  * POST /venues
  * Admin – create venue
  */
-router.post("/", requireAdmin, async (req, res) => {
+router.post("/", requireAuth, requireAdmin, async (req, res) => {
   const { name, address, city } = req.body;
 
   if (!name || typeof name !== "string") {
@@ -36,6 +37,43 @@ router.post("/", requireAdmin, async (req, res) => {
   });
 
   res.status(201).json(venue);
+});
+
+/**
+ * PATCH /venues/:id
+ * Admin 
+ */
+router.patch("/:id", requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { name, address, city } = req.body;
+
+  const exists = await prisma.venue.findUnique({ where: { id } });
+  if (!exists) return res.status(404).json({ error: "Venue not found" });
+
+  const updated = await prisma.venue.update({
+    where: { id },
+    data: {
+      ...(name !== undefined ? { name } : {}),
+      ...(address !== undefined ? { address } : {}),
+      ...(city !== undefined ? { city } : {}),
+    },
+  });
+
+  res.json(updated);
+});
+
+/**
+ * DELETE /venues/:id
+ * Admin
+ */
+router.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+
+  const exists = await prisma.venue.findUnique({ where: { id } });
+  if (!exists) return res.status(404).json({ error: "Venue not found" });
+
+  await prisma.venue.delete({ where: { id } });
+  res.status(204).send();
 });
 
 export default router;
