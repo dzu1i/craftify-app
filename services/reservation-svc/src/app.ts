@@ -14,7 +14,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use((req, _res, next) => {
-  console.log(`[catalog-svc] ${req.method} ${req.path}`);
+  console.log(`[reservation-svc] ${req.method} ${req.path}`);
   next();
 });
 

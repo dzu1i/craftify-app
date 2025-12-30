@@ -20,6 +20,9 @@ importers:
       '@types/node':
         specifier: ^20.19.25
         version: 20.19.27
+      prisma:
+        specifier: ^5.22.0
+        version: 5.22.0
 
   packages/prisma:
     dependencies:

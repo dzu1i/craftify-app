@@ -22,16 +22,18 @@ function getBearerToken(req: Request): string | null {
   return token;
 }
 
-const supabaseUrl = process.env.SUPABASE_URL;
-if (!supabaseUrl) {
+const supabaseUrlRaw = process.env.SUPABASE_URL;
+if (!supabaseUrlRaw) {
   throw new Error("Missing SUPABASE_URL env var");
 }
+
+// IMPORTANT: normalize trailing slash
+const supabaseUrl = supabaseUrlRaw.replace(/\/$/, "");
 
 // Supabase JWKS endpoint
 const jwks = createRemoteJWKSet(new URL(`${supabaseUrl}/auth/v1/keys`));
 
 const audience = process.env.SUPABASE_JWT_AUD ?? "authenticated";
-// issuer check je volitelné – pokud chceš zpřísnit, nech to takhle:
 const issuer = `${supabaseUrl}/auth/v1`;
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -57,7 +59,9 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     };
 
     return next();
-  } catch {
+  } catch (err) {
+    // show real reason in terminal
+    console.error("[auth] Invalid token:", err);
     return res.status(401).json({ error: "Invalid or expired token" });
   }
 }
